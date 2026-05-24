@@ -168,7 +168,7 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun DocumentViewerScreen(path: String) {
-    val isPdf = path.lowercase().endsWith(".pdf")
+    val ext = path.substringAfterLast('.', "").lowercase()
     
     // 1. Correctly encode the path pieces (spaces -> %20, + -> %2B)
     val encodedPath = path.split("/").joinToString("/") { android.net.Uri.encode(it) }
@@ -177,10 +177,10 @@ fun DocumentViewerScreen(path: String) {
     // 2. Safely encode the entire URL to be passed as a query parameter
     val encodedParam = java.net.URLEncoder.encode(directFileUrl, "UTF-8")
     
-    val viewerUrl = if (isPdf) {
-        "https://mozilla.github.io/pdf.js/web/viewer.html?file=$encodedParam"
-    } else {
-        "https://view.officeapps.live.com/op/view.aspx?src=$encodedParam"
+    val viewerUrl = when (ext) {
+        "pdf" -> "https://docs.google.com/gview?embedded=true&url=$encodedParam"
+        "docx", "doc", "pptx", "ppt", "xlsx", "xls" -> "https://view.officeapps.live.com/op/view.aspx?src=$encodedParam"
+        else -> directFileUrl
     }
 
     AndroidView(
@@ -194,7 +194,16 @@ fun DocumentViewerScreen(path: String) {
                 settings.useWideViewPort = true
                 settings.loadWithOverviewMode = true
                 settings.mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
-                webViewClient = WebViewClient()
+                webViewClient = object : WebViewClient() {
+                    override fun onPageFinished(view: WebView?, url: String?) {
+                        super.onPageFinished(view, url)
+                        // Forcibly unlock pinch-to-zoom on embedded viewers
+                        view?.evaluateJavascript(
+                            "try { document.querySelector('meta[name=\"viewport\"]').setAttribute('content', 'width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes'); } catch(e) {}", 
+                            null
+                        )
+                    }
+                }
                 loadUrl(viewerUrl)
             }
         },
