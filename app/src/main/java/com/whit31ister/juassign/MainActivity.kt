@@ -12,6 +12,10 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material.ExperimentalMaterialApi
+import androidx.compose.material.pullrefresh.PullRefreshIndicator
+import androidx.compose.material.pullrefresh.pullRefresh
+import androidx.compose.material.pullrefresh.rememberPullRefreshState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Description
@@ -27,13 +31,14 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import com.whit31ister.juassign.ui.theme.JUAssignTheme
 
 class MainActivity : ComponentActivity() {
     private val apiService = LibraryApiService.create()
 
-    @OptIn(ExperimentalMaterial3Api::class)
+    @OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterialApi::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
@@ -44,12 +49,32 @@ class MainActivity : ComponentActivity() {
                 ) {
                     var allAssignments by remember { mutableStateOf<List<AssignmentFile>>(emptyList()) }
                     var isLoading by remember { mutableStateOf(true) }
+                    var isRefreshing by remember { mutableStateOf(false) }
                     var errorMessage by remember { mutableStateOf<String?>(null) }
                     
                     var currentPath by remember { mutableStateOf<List<String>>(emptyList()) }
                     var searchQuery by remember { mutableStateOf("") }
                     var isSearching by remember { mutableStateOf(false) }
                     var viewingFile by remember { mutableStateOf<AssignmentFile?>(null) }
+                    
+                    val coroutineScope = rememberCoroutineScope()
+                    val pullRefreshState = rememberPullRefreshState(
+                        refreshing = isRefreshing,
+                        onRefresh = {
+                            coroutineScope.launch {
+                                isRefreshing = true
+                                try {
+                                    val manifest = withContext(Dispatchers.IO) { apiService.getManifest() }
+                                    allAssignments = manifest.files
+                                    errorMessage = null
+                                } catch (e: Exception) {
+                                    errorMessage = e.message
+                                } finally {
+                                    isRefreshing = false
+                                }
+                            }
+                        }
+                    )
 
                     LaunchedEffect(Unit) {
                         try {
@@ -140,21 +165,30 @@ class MainActivity : ComponentActivity() {
                                     computeDisplayItems(allAssignments, currentPath, searchQuery)
                                 }
                                 
-                                if (displayItems.isEmpty()) {
-                                    Text(
-                                        text = "No files found.",
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        modifier = Modifier.align(Alignment.Center)
-                                    )
-                                } else {
-                                    AssignmentList(
-                                        items = displayItems,
-                                        onFolderClick = { folderName ->
-                                            currentPath = currentPath + folderName
-                                        },
-                                        onFileClick = { file ->
-                                            viewingFile = file
-                                        }
+                                Box(modifier = Modifier.fillMaxSize().pullRefresh(pullRefreshState)) {
+                                    if (displayItems.isEmpty()) {
+                                        Text(
+                                            text = "No files found.",
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.align(Alignment.Center)
+                                        )
+                                    } else {
+                                        AssignmentList(
+                                            items = displayItems,
+                                            onFolderClick = { folderName ->
+                                                currentPath = currentPath + folderName
+                                            },
+                                            onFileClick = { file ->
+                                                viewingFile = file
+                                            }
+                                        )
+                                    }
+                                    PullRefreshIndicator(
+                                        refreshing = isRefreshing,
+                                        state = pullRefreshState,
+                                        modifier = Modifier.align(Alignment.TopCenter),
+                                        backgroundColor = MaterialTheme.colorScheme.surface,
+                                        contentColor = MaterialTheme.colorScheme.primary
                                     )
                                 }
                             }
@@ -178,8 +212,7 @@ fun DocumentViewerScreen(path: String) {
     val encodedParam = java.net.URLEncoder.encode(directFileUrl, "UTF-8")
     
     val viewerUrl = when (ext) {
-        "pdf" -> "https://docs.google.com/gview?embedded=true&url=$encodedParam"
-        "docx", "doc", "pptx", "ppt", "xlsx", "xls" -> "https://view.officeapps.live.com/op/view.aspx?src=$encodedParam"
+        "pdf", "docx", "doc", "pptx", "ppt", "xlsx", "xls" -> "https://docs.google.com/gview?embedded=true&url=$encodedParam"
         else -> directFileUrl
     }
 
