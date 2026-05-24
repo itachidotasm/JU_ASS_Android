@@ -3,6 +3,8 @@ package com.whit31ister.juassign
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import android.webkit.WebView
+import android.webkit.WebViewClient
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.compose.BackHandler
@@ -21,7 +23,9 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.viewinterop.AndroidView
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import com.whit31ister.juassign.ui.theme.JUAssignTheme
@@ -45,6 +49,7 @@ class MainActivity : ComponentActivity() {
                     var currentPath by remember { mutableStateOf<List<String>>(emptyList()) }
                     var searchQuery by remember { mutableStateOf("") }
                     var isSearching by remember { mutableStateOf(false) }
+                    var viewingFile by remember { mutableStateOf<AssignmentFile?>(null) }
 
                     LaunchedEffect(Unit) {
                         try {
@@ -59,8 +64,10 @@ class MainActivity : ComponentActivity() {
                         }
                     }
 
-                    BackHandler(enabled = currentPath.isNotEmpty() || isSearching) {
-                        if (isSearching) {
+                    BackHandler(enabled = viewingFile != null || currentPath.isNotEmpty() || isSearching) {
+                        if (viewingFile != null) {
+                            viewingFile = null
+                        } else if (isSearching) {
                             isSearching = false
                             searchQuery = ""
                         } else if (currentPath.isNotEmpty()) {
@@ -70,7 +77,20 @@ class MainActivity : ComponentActivity() {
 
                     Scaffold(
                         topBar = {
-                            if (isSearching) {
+                            if (viewingFile != null) {
+                                TopAppBar(
+                                    title = { Text(viewingFile!!.title, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                                    navigationIcon = {
+                                        IconButton(onClick = { viewingFile = null }) {
+                                            Icon(Icons.Default.ArrowBack, contentDescription = "Close Viewer")
+                                        }
+                                    },
+                                    colors = TopAppBarDefaults.topAppBarColors(
+                                        containerColor = MaterialTheme.colorScheme.background,
+                                        titleContentColor = MaterialTheme.colorScheme.onBackground
+                                    )
+                                )
+                            } else if (isSearching) {
                                 SearchBarTop(
                                     query = searchQuery,
                                     onQueryChange = { searchQuery = it },
@@ -113,6 +133,9 @@ class MainActivity : ComponentActivity() {
                                     color = MaterialTheme.colorScheme.error,
                                     modifier = Modifier.padding(16.dp).align(Alignment.Center)
                                 )
+                            } else if (viewingFile != null) {
+                                val url = "https://whit31ister.github.io/JU_ASSIGN/${viewingFile!!.path}"
+                                DocumentViewerScreen(url = url)
                             } else {
                                 val displayItems = remember(allAssignments, currentPath, searchQuery) {
                                     computeDisplayItems(allAssignments, currentPath, searchQuery)
@@ -131,9 +154,7 @@ class MainActivity : ComponentActivity() {
                                             currentPath = currentPath + folderName
                                         },
                                         onFileClick = { file ->
-                                            val url = "https://whit31ister.github.io/JU_ASSIGN/${file.path}"
-                                            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
-                                            startActivity(intent)
+                                            viewingFile = file
                                         }
                                     )
                                 }
@@ -144,6 +165,25 @@ class MainActivity : ComponentActivity() {
             }
         }
     }
+}
+
+@Composable
+fun DocumentViewerScreen(url: String) {
+    val googleDocsUrl = "https://docs.google.com/gview?embedded=true&url=$url"
+    AndroidView(
+        factory = { context ->
+            WebView(context).apply {
+                settings.javaScriptEnabled = true
+                settings.domStorageEnabled = true
+                webViewClient = WebViewClient()
+                loadUrl(googleDocsUrl)
+            }
+        },
+        update = { webView ->
+            webView.loadUrl(googleDocsUrl)
+        },
+        modifier = Modifier.fillMaxSize()
+    )
 }
 
 data class DisplayItem(
@@ -158,9 +198,21 @@ fun computeDisplayItems(
     currentPath: List<String>,
     searchQuery: String
 ): List<DisplayItem> {
+    val scopedAssignments = allAssignments.filter { assignment ->
+        val parts = assignment.path.split("/")
+        var matchesPath = true
+        for (i in currentPath.indices) {
+            if (i >= parts.size || parts[i] != currentPath[i]) {
+                matchesPath = false
+                break
+            }
+        }
+        matchesPath
+    }
+
     if (searchQuery.isNotBlank()) {
         val query = searchQuery.lowercase()
-        return allAssignments
+        return scopedAssignments
             .filter { it.title.lowercase().contains(query) || it.path.lowercase().contains(query) }
             .sortedBy { it.title }
             .map { DisplayItem(isFolder = false, name = it.title, description = it.path, file = it) }
@@ -170,23 +222,12 @@ fun computeDisplayItems(
     val folders = mutableSetOf<String>()
     val files = mutableListOf<AssignmentFile>()
 
-    allAssignments.forEach { assignment ->
+    scopedAssignments.forEach { assignment ->
         val parts = assignment.path.split("/")
-        
-        var matchesPath = true
-        for (i in currentPath.indices) {
-            if (i >= parts.size || parts[i] != currentPath[i]) {
-                matchesPath = false
-                break
-            }
-        }
-
-        if (matchesPath) {
-            if (parts.size > depth + 1) {
-                folders.add(parts[depth])
-            } else if (parts.size == depth + 1) {
-                files.add(assignment)
-            }
+        if (parts.size > depth + 1) {
+            folders.add(parts[depth])
+        } else if (parts.size == depth + 1) {
+            files.add(assignment)
         }
     }
 
