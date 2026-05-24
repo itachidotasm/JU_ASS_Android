@@ -134,8 +134,7 @@ class MainActivity : ComponentActivity() {
                                     modifier = Modifier.padding(16.dp).align(Alignment.Center)
                                 )
                             } else if (viewingFile != null) {
-                                val url = "https://whit31ister.github.io/JU_ASSIGN/${viewingFile!!.path}"
-                                DocumentViewerScreen(url = url)
+                                DocumentViewerScreen(path = viewingFile!!.path)
                             } else {
                                 val displayItems = remember(allAssignments, currentPath, searchQuery) {
                                     computeDisplayItems(allAssignments, currentPath, searchQuery)
@@ -168,14 +167,20 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-fun DocumentViewerScreen(url: String) {
-    val isPdf = url.lowercase().endsWith(".pdf")
-    val encodedUrl = java.net.URLEncoder.encode(url, "UTF-8")
+fun DocumentViewerScreen(path: String) {
+    val isPdf = path.lowercase().endsWith(".pdf")
+    
+    // 1. Correctly encode the path pieces (spaces -> %20, + -> %2B)
+    val encodedPath = path.split("/").joinToString("/") { android.net.Uri.encode(it) }
+    val directFileUrl = "https://whit31ister.github.io/JU_ASSIGN/$encodedPath"
+    
+    // 2. Safely encode the entire URL to be passed as a query parameter
+    val encodedParam = java.net.URLEncoder.encode(directFileUrl, "UTF-8")
     
     val viewerUrl = if (isPdf) {
-        "https://mozilla.github.io/pdf.js/web/viewer.html?file=$encodedUrl"
+        "https://mozilla.github.io/pdf.js/web/viewer.html?file=$encodedParam"
     } else {
-        "https://view.officeapps.live.com/op/view.aspx?src=$encodedUrl"
+        "https://view.officeapps.live.com/op/view.aspx?src=$encodedParam"
     }
 
     AndroidView(
