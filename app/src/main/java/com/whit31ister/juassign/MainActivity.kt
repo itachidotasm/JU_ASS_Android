@@ -169,18 +169,30 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun DocumentViewerScreen(url: String) {
-    val googleDocsUrl = "https://docs.google.com/gview?embedded=true&url=$url"
+    val isPdf = url.lowercase().endsWith(".pdf")
+    
+    val viewerUrl = if (isPdf) {
+        "https://mozilla.github.io/pdf.js/web/viewer.html?file=$url"
+    } else {
+        "https://view.officeapps.live.com/op/view.aspx?src=$url"
+    }
+
     AndroidView(
         factory = { context ->
             WebView(context).apply {
                 settings.javaScriptEnabled = true
                 settings.domStorageEnabled = true
+                settings.setSupportZoom(true)
+                settings.builtInZoomControls = true
+                settings.displayZoomControls = false
+                settings.useWideViewPort = true
+                settings.loadWithOverviewMode = true
                 webViewClient = WebViewClient()
-                loadUrl(googleDocsUrl)
+                loadUrl(viewerUrl)
             }
         },
         update = { webView ->
-            webView.loadUrl(googleDocsUrl)
+            webView.loadUrl(viewerUrl)
         },
         modifier = Modifier.fillMaxSize()
     )
