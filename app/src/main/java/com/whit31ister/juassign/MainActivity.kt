@@ -170,11 +170,12 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun DocumentViewerScreen(url: String) {
     val isPdf = url.lowercase().endsWith(".pdf")
+    val encodedUrl = java.net.URLEncoder.encode(url, "UTF-8")
     
     val viewerUrl = if (isPdf) {
-        "https://mozilla.github.io/pdf.js/web/viewer.html?file=$url"
+        "https://mozilla.github.io/pdf.js/web/viewer.html?file=$encodedUrl"
     } else {
-        "https://view.officeapps.live.com/op/view.aspx?src=$url"
+        "https://view.officeapps.live.com/op/view.aspx?src=$encodedUrl"
     }
 
     AndroidView(
@@ -187,6 +188,7 @@ fun DocumentViewerScreen(url: String) {
                 settings.displayZoomControls = false
                 settings.useWideViewPort = true
                 settings.loadWithOverviewMode = true
+                settings.mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
                 webViewClient = WebViewClient()
                 loadUrl(viewerUrl)
             }
