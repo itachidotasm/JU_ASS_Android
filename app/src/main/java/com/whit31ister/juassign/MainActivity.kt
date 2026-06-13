@@ -172,21 +172,6 @@ class MainActivity : ComponentActivity() {
                                                 Icon(Icons.Default.Folder, contentDescription = "View Downloads")
                                             }
                                             Box {
-                                            IconButton(onClick = { showSortMenu = true }) {
-                                                Icon(Icons.Default.Sort, contentDescription = "Sort")
-                                            }
-                                            DropdownMenu(
-                                                expanded = showSortMenu,
-                                                onDismissRequest = { showSortMenu = false }
-                                            ) {
-                                                DropdownMenuItem(
-                                                    text = { Text("Name (A to Z)") },
-                                                    onClick = { sortOrder = SortOrder.A_Z; showSortMenu = false }
-                                                )
-                                                DropdownMenuItem(
-                                                    text = { Text("Name (Z to A)") },
-                                                    onClick = { sortOrder = SortOrder.Z_A; showSortMenu = false }
-                                                )
                                                 IconButton(onClick = { showSortMenu = true }) {
                                                     Icon(Icons.Default.Sort, contentDescription = "Sort")
                                                 }
@@ -204,15 +189,15 @@ class MainActivity : ComponentActivity() {
                                                     )
                                                 }
                                             }
+                                            IconButton(onClick = { isSearching = true }) {
+                                                Icon(Icons.Default.Search, contentDescription = "Search")
+                                            }
                                         }
                                         IconButton(onClick = { isDarkTheme = !isDarkTheme }) {
                                             Icon(
                                                 imageVector = if (isDarkTheme) Icons.Default.LightMode else Icons.Default.DarkMode,
                                                 contentDescription = "Toggle Theme"
                                             )
-                                        }
-                                        IconButton(onClick = { isSearching = true }) {
-                                            Icon(Icons.Default.Search, contentDescription = "Search")
                                         }
                                     },
                                     colors = TopAppBarDefaults.topAppBarColors(
@@ -240,7 +225,7 @@ class MainActivity : ComponentActivity() {
                                     allAssignments.mapNotNull { assignment ->
                                         val file = File(downloadsDir, assignment.title)
                                         if (file.exists()) {
-                                            DisplayItem(isFolder = false, name = file.name, description = "Downloaded File", file = AssignmentFile(file.name, file.absolutePath, "", 0))
+                                            DisplayItem(isFolder = false, name = file.name, description = "Downloaded File", file = AssignmentFile(file.absolutePath, file.name, ""))
                                         } else null
                                     }.distinctBy { it.name }
                                 }
