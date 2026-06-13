@@ -75,6 +75,7 @@ class MainActivity : ComponentActivity() {
                     var sortOrder by remember { mutableStateOf(SortOrder.A_Z) }
                     var showSortMenu by remember { mutableStateOf(false) }
                     
+                    val context = LocalContext.current
                     val coroutineScope = rememberCoroutineScope()
                     val pullRefreshState = rememberPullRefreshState(
                         refreshing = isRefreshing,
@@ -113,8 +114,6 @@ class MainActivity : ComponentActivity() {
                             currentPath = currentPath.dropLast(1)
                         }
                     }
-
-                    val context = LocalContext.current
 
                     Scaffold(
                         topBar = {
@@ -436,7 +435,7 @@ suspend fun fetchAssignments(context: Context, apiService: LibraryApiService): L
             withContext(Dispatchers.Main) {
                 Toast.makeText(context, "Offline Mode: Showing cached files", Toast.LENGTH_LONG).show()
             }
-            val manifest = gson.fromJson(cachedJson, LibraryManifest::class.java)
+            val manifest = gson.fromJson(cachedJson, Manifest::class.java)
             manifest.files
         } else {
             throw e
