@@ -221,11 +221,13 @@ class MainActivity : ComponentActivity() {
                                 DocumentViewerScreen(path = viewingFile!!.path, isDarkTheme = isDarkTheme)
                             } else if (viewingDownloads) {
                                 val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+                                val juDownloadsDir = File(downloadsDir, "JU Assignments")
                                 val downloadedFiles = remember(allAssignments, viewingDownloads) {
                                     allAssignments.mapNotNull { assignment ->
-                                        val file = File(downloadsDir, assignment.title)
+                                        val fileName = assignment.path.substringAfterLast('/')
+                                        val file = File(juDownloadsDir, fileName)
                                         if (file.exists()) {
-                                            DisplayItem(isFolder = false, name = file.name, description = "Downloaded File", file = AssignmentFile(file.absolutePath, file.name, ""))
+                                            DisplayItem(isFolder = false, name = assignment.title, description = "Downloaded File", file = AssignmentFile(file.absolutePath, assignment.title, ""))
                                         } else null
                                     }.distinctBy { it.name }
                                 }
@@ -503,11 +505,14 @@ fun downloadFile(context: Context, path: String, title: String) {
     val encodedPath = path.split("/").joinToString("/") { android.net.Uri.encode(it) }
     val directFileUrl = "https://whit31ister.github.io/JU_ASSIGN/$encodedPath"
     
+    val fileName = path.substringAfterLast('/')
+    val subFolder = "JU Assignments"
+    
     val request = DownloadManager.Request(android.net.Uri.parse(directFileUrl))
         .setTitle(title)
         .setDescription("Downloading assignment...")
         .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-        .setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, title)
+        .setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, "$subFolder/$fileName")
         
     val downloadManager = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
     downloadManager.enqueue(request)
