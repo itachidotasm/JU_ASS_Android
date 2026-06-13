@@ -1,10 +1,14 @@
 package com.whit31ister.juassign
 
+import android.app.DownloadManager
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import android.os.Environment
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.compose.BackHandler
@@ -21,6 +25,8 @@ import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Sort
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.LightMode
@@ -30,6 +36,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -58,10 +65,12 @@ class MainActivity : ComponentActivity() {
                     var isRefreshing by remember { mutableStateOf(false) }
                     var errorMessage by remember { mutableStateOf<String?>(null) }
                     
-                    var currentPath by remember { mutableStateOf<List<String>>(emptyList()) }
+                    var currentPath by remember { mutableStateOf<List<String>>(listOf("assignments")) }
                     var searchQuery by remember { mutableStateOf("") }
                     var isSearching by remember { mutableStateOf(false) }
                     var viewingFile by remember { mutableStateOf<AssignmentFile?>(null) }
+                    var sortOrder by remember { mutableStateOf(SortOrder.A_Z) }
+                    var showSortMenu by remember { mutableStateOf(false) }
                     
                     val coroutineScope = rememberCoroutineScope()
                     val pullRefreshState = rememberPullRefreshState(
@@ -95,16 +104,18 @@ class MainActivity : ComponentActivity() {
                         }
                     }
 
-                    BackHandler(enabled = viewingFile != null || currentPath.isNotEmpty() || isSearching) {
+                    BackHandler(enabled = viewingFile != null || currentPath.size > 1 || isSearching) {
                         if (viewingFile != null) {
                             viewingFile = null
                         } else if (isSearching) {
                             isSearching = false
                             searchQuery = ""
-                        } else if (currentPath.isNotEmpty()) {
+                        } else if (currentPath.size > 1) {
                             currentPath = currentPath.dropLast(1)
                         }
                     }
+
+                    val context = LocalContext.current
 
                     Scaffold(
                         topBar = {
@@ -114,6 +125,11 @@ class MainActivity : ComponentActivity() {
                                     navigationIcon = {
                                         IconButton(onClick = { viewingFile = null }) {
                                             Icon(Icons.Default.ArrowBack, contentDescription = "Close Viewer")
+                                        }
+                                    },
+                                    actions = {
+                                        IconButton(onClick = { downloadFile(context, viewingFile!!.path, viewingFile!!.title) }) {
+                                            Icon(Icons.Default.Download, contentDescription = "Download File")
                                         }
                                     },
                                     colors = TopAppBarDefaults.topAppBarColors(
@@ -136,13 +152,31 @@ class MainActivity : ComponentActivity() {
                                         Text(if (currentPath.isEmpty()) "JU Assignments" else currentPath.last())
                                     },
                                     navigationIcon = {
-                                        if (currentPath.isNotEmpty()) {
+                                        if (currentPath.size > 1) {
                                             IconButton(onClick = { currentPath = currentPath.dropLast(1) }) {
                                                 Icon(Icons.Default.ArrowBack, contentDescription = "Back")
                                             }
                                         }
                                     },
                                     actions = {
+                                        Box {
+                                            IconButton(onClick = { showSortMenu = true }) {
+                                                Icon(Icons.Default.Sort, contentDescription = "Sort")
+                                            }
+                                            DropdownMenu(
+                                                expanded = showSortMenu,
+                                                onDismissRequest = { showSortMenu = false }
+                                            ) {
+                                                DropdownMenuItem(
+                                                    text = { Text("Name (A to Z)") },
+                                                    onClick = { sortOrder = SortOrder.A_Z; showSortMenu = false }
+                                                )
+                                                DropdownMenuItem(
+                                                    text = { Text("Name (Z to A)") },
+                                                    onClick = { sortOrder = SortOrder.Z_A; showSortMenu = false }
+                                                )
+                                            }
+                                        }
                                         IconButton(onClick = { isDarkTheme = !isDarkTheme }) {
                                             Icon(
                                                 imageVector = if (isDarkTheme) Icons.Default.LightMode else Icons.Default.DarkMode,
@@ -173,8 +207,8 @@ class MainActivity : ComponentActivity() {
                             } else if (viewingFile != null) {
                                 DocumentViewerScreen(path = viewingFile!!.path, isDarkTheme = isDarkTheme)
                             } else {
-                                val displayItems = remember(allAssignments, currentPath, searchQuery) {
-                                    computeDisplayItems(allAssignments, currentPath, searchQuery)
+                                val displayItems = remember(allAssignments, currentPath, searchQuery, sortOrder) {
+                                    computeDisplayItems(allAssignments, currentPath, searchQuery, sortOrder)
                                 }
                                 
                                 Box(modifier = Modifier.fillMaxSize().pullRefresh(pullRefreshState)) {
@@ -312,10 +346,15 @@ data class DisplayItem(
     val file: AssignmentFile? = null
 )
 
+enum class SortOrder {
+    A_Z, Z_A
+}
+
 fun computeDisplayItems(
     allAssignments: List<AssignmentFile>,
     currentPath: List<String>,
-    searchQuery: String
+    searchQuery: String,
+    sortOrder: SortOrder
 ): List<DisplayItem> {
     val scopedAssignments = allAssignments.filter { assignment ->
         val parts = assignment.path.split("/")
@@ -331,10 +370,14 @@ fun computeDisplayItems(
 
     if (searchQuery.isNotBlank()) {
         val query = searchQuery.lowercase()
-        return scopedAssignments
+        val results = scopedAssignments
             .filter { it.title.lowercase().contains(query) || it.path.lowercase().contains(query) }
-            .sortedBy { it.title }
             .map { DisplayItem(isFolder = false, name = it.title, description = it.path, file = it) }
+        
+        return when (sortOrder) {
+            SortOrder.A_Z -> results.sortedBy { it.name.lowercase() }
+            SortOrder.Z_A -> results.sortedByDescending { it.name.lowercase() }
+        }
     }
 
     val depth = currentPath.size
@@ -350,15 +393,35 @@ fun computeDisplayItems(
         }
     }
 
-    val displayFolders = folders.sorted().map { folderName ->
+    val displayFolders = folders.map { folderName ->
         DisplayItem(isFolder = true, name = folderName, description = "Folder")
     }
     
-    val displayFiles = files.sortedBy { it.title }.map { file ->
+    val displayFiles = files.map { file ->
         DisplayItem(isFolder = false, name = file.title, description = file.description, file = file)
     }
 
-    return displayFolders + displayFiles
+    val combined = displayFolders + displayFiles
+    return when (sortOrder) {
+        SortOrder.A_Z -> combined.sortedBy { it.name.lowercase() }
+        SortOrder.Z_A -> combined.sortedByDescending { it.name.lowercase() }
+    }
+}
+
+fun downloadFile(context: Context, path: String, title: String) {
+    val encodedPath = path.split("/").joinToString("/") { android.net.Uri.encode(it) }
+    val directFileUrl = "https://whit31ister.github.io/JU_ASSIGN/$encodedPath"
+    
+    val request = DownloadManager.Request(android.net.Uri.parse(directFileUrl))
+        .setTitle(title)
+        .setDescription("Downloading assignment...")
+        .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+        .setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, title)
+        
+    val downloadManager = context.getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager
+    downloadManager.enqueue(request)
+    
+    Toast.makeText(context, "Download started...", Toast.LENGTH_SHORT).show()
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
