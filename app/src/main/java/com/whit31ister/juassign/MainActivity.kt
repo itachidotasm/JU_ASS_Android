@@ -3,6 +3,8 @@ package com.whit31ister.juassign
 import android.app.DownloadManager
 import android.content.Context
 import android.content.Intent
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 import android.net.Uri
 import android.os.Bundle
 import android.os.Environment
@@ -44,6 +46,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import com.whit31ister.juassign.ui.theme.JUAssignTheme
+import com.google.gson.Gson
 
 class MainActivity : ComponentActivity() {
     private val apiService = LibraryApiService.create()
@@ -79,11 +82,10 @@ class MainActivity : ComponentActivity() {
                             coroutineScope.launch {
                                 isRefreshing = true
                                 try {
-                                    val manifest = withContext(Dispatchers.IO) { apiService.getManifest() }
-                                    allAssignments = manifest.files
+                                    allAssignments = fetchAssignments(context, apiService)
                                     errorMessage = null
                                 } catch (e: Exception) {
-                                    errorMessage = e.message
+                                    errorMessage = "Network Error. No offline cache found."
                                 } finally {
                                     isRefreshing = false
                                 }
@@ -93,12 +95,9 @@ class MainActivity : ComponentActivity() {
 
                     LaunchedEffect(Unit) {
                         try {
-                            val manifest = withContext(Dispatchers.IO) {
-                                apiService.getManifest()
-                            }
-                            allAssignments = manifest.files
+                            allAssignments = fetchAssignments(context, apiService)
                         } catch (e: Exception) {
-                            errorMessage = e.message
+                            errorMessage = "Network Error. No offline cache found."
                         } finally {
                             isLoading = false
                         }
@@ -159,6 +158,15 @@ class MainActivity : ComponentActivity() {
                                         }
                                     },
                                     actions = {
+                                        IconButton(onClick = { 
+                                            try {
+                                                context.startActivity(Intent(DownloadManager.ACTION_VIEW_DOWNLOADS))
+                                            } catch (e: Exception) {
+                                                Toast.makeText(context, "Downloads app not found", Toast.LENGTH_SHORT).show()
+                                            }
+                                        }) {
+                                            Icon(Icons.Default.Folder, contentDescription = "View Downloads")
+                                        }
                                         Box {
                                             IconButton(onClick = { showSortMenu = true }) {
                                                 Icon(Icons.Default.Sort, contentDescription = "Sort")
@@ -225,7 +233,11 @@ class MainActivity : ComponentActivity() {
                                                 currentPath = currentPath + folderName
                                             },
                                             onFileClick = { file ->
-                                                viewingFile = file
+                                                if (!isNetworkAvailable(context)) {
+                                                    Toast.makeText(context, "You are offline. Tap the Folder icon above to view downloaded files.", Toast.LENGTH_LONG).show()
+                                                } else {
+                                                    viewingFile = file
+                                                }
                                             }
                                         )
                                     }
@@ -406,6 +418,39 @@ fun computeDisplayItems(
         SortOrder.A_Z -> combined.sortedBy { it.name.lowercase() }
         SortOrder.Z_A -> combined.sortedByDescending { it.name.lowercase() }
     }
+}
+
+suspend fun fetchAssignments(context: Context, apiService: LibraryApiService): List<AssignmentFile> {
+    val prefs = context.getSharedPreferences("juassign_prefs", Context.MODE_PRIVATE)
+    val gson = Gson()
+    
+    return try {
+        val manifest = withContext(Dispatchers.IO) { apiService.getManifest() }
+        // Save to cache securely
+        prefs.edit().putString("cached_manifest", gson.toJson(manifest)).apply()
+        manifest.files
+    } catch (e: Exception) {
+        // Fallback to cache on network failure
+        val cachedJson = prefs.getString("cached_manifest", null)
+        if (cachedJson != null) {
+            withContext(Dispatchers.Main) {
+                Toast.makeText(context, "Offline Mode: Showing cached files", Toast.LENGTH_LONG).show()
+            }
+            val manifest = gson.fromJson(cachedJson, LibraryManifest::class.java)
+            manifest.files
+        } else {
+            throw e
+        }
+    }
+}
+
+fun isNetworkAvailable(context: Context): Boolean {
+    val connectivityManager = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+    val network = connectivityManager.activeNetwork ?: return false
+    val capabilities = connectivityManager.getNetworkCapabilities(network) ?: return false
+    return capabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) || 
+           capabilities.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) || 
+           capabilities.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET)
 }
 
 fun downloadFile(context: Context, path: String, title: String) {
