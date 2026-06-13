@@ -227,7 +227,7 @@ class MainActivity : ComponentActivity() {
                                         val fileName = assignment.path.substringAfterLast('/')
                                         val file = File(juDownloadsDir, fileName)
                                         if (file.exists()) {
-                                            DisplayItem(isFolder = false, name = assignment.title, description = "Downloaded File", file = AssignmentFile(file.absolutePath, assignment.title, ""))
+                                            DisplayItem(isFolder = false, name = assignment.title, description = getFileTypeDescription(assignment.path), file = AssignmentFile(file.absolutePath, assignment.title, ""))
                                         } else null
                                     }.distinctBy { it.name }
                                 }
@@ -399,6 +399,18 @@ fun DocumentViewerScreen(path: String, isDarkTheme: Boolean) {
     )
 }
 
+fun getFileTypeDescription(path: String): String {
+    return when (path.substringAfterLast('.', "").lowercase()) {
+        "pdf" -> "PDF Document"
+        "docx", "doc" -> "Word Document"
+        "md" -> "Markdown Document"
+        "pptx", "ppt" -> "PowerPoint Presentation"
+        "xlsx", "xls" -> "Excel Spreadsheet"
+        "txt" -> "Text Document"
+        else -> "File"
+    }
+}
+
 data class DisplayItem(
     val isFolder: Boolean,
     val name: String,
@@ -432,7 +444,7 @@ fun computeDisplayItems(
         val query = searchQuery.lowercase()
         val results = scopedAssignments
             .filter { it.title.lowercase().contains(query) || it.path.lowercase().contains(query) }
-            .map { DisplayItem(isFolder = false, name = it.title, description = it.path, file = it) }
+            .map { DisplayItem(isFolder = false, name = it.title, description = getFileTypeDescription(it.path), file = it) }
         
         return when (sortOrder) {
             SortOrder.A_Z -> results.sortedBy { it.name.lowercase() }
@@ -458,7 +470,7 @@ fun computeDisplayItems(
     }
     
     val displayFiles = files.map { file ->
-        DisplayItem(isFolder = false, name = file.title, description = file.description, file = file)
+        DisplayItem(isFolder = false, name = file.title, description = getFileTypeDescription(file.path), file = file)
     }
 
     val combined = displayFolders + displayFiles
