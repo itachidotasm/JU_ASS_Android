@@ -2,12 +2,12 @@ package com.whit31ister.juassign.ui.theme
 
 import androidx.compose.ui.graphics.Color
 
-val LightBackground = Color(0xFFFAF9F7)
-val LightSurface = Color(0xFFFFFFFF)
-val LightSurfaceStrong = Color(0xFFF4F2EE)
-val LightText = Color(0xFF2F2A24)
-val LightMuted = Color(0xFF6B665C)
-val LightAccent = Color(0xFF6B5C52)
+val LightBackground = Color(0xFFF5F2E9)
+val LightSurface = Color(0xFFFDFCF9)
+val LightSurfaceStrong = Color(0xFFE8E3D5)
+val LightText = Color(0xFF33302A)
+val LightMuted = Color(0xFF736E65)
+val LightAccent = Color(0xFF706359)
 
 val DarkBackground = Color(0xFF121212)
 val DarkSurface = Color(0xFF1E1E1E)

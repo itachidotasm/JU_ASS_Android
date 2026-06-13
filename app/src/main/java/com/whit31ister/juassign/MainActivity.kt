@@ -22,6 +22,9 @@ import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.DarkMode
+import androidx.compose.material.icons.filled.LightMode
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -42,7 +45,10 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
-            JUAssignTheme {
+            val systemDarkTheme = isSystemInDarkTheme()
+            var isDarkTheme by remember { mutableStateOf(systemDarkTheme) }
+
+            JUAssignTheme(darkTheme = isDarkTheme) {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
@@ -137,6 +143,12 @@ class MainActivity : ComponentActivity() {
                                         }
                                     },
                                     actions = {
+                                        IconButton(onClick = { isDarkTheme = !isDarkTheme }) {
+                                            Icon(
+                                                imageVector = if (isDarkTheme) Icons.Default.LightMode else Icons.Default.DarkMode,
+                                                contentDescription = "Toggle Theme"
+                                            )
+                                        }
                                         IconButton(onClick = { isSearching = true }) {
                                             Icon(Icons.Default.Search, contentDescription = "Search")
                                         }
@@ -159,7 +171,7 @@ class MainActivity : ComponentActivity() {
                                     modifier = Modifier.padding(16.dp).align(Alignment.Center)
                                 )
                             } else if (viewingFile != null) {
-                                DocumentViewerScreen(path = viewingFile!!.path)
+                                DocumentViewerScreen(path = viewingFile!!.path, isDarkTheme = isDarkTheme)
                             } else {
                                 val displayItems = remember(allAssignments, currentPath, searchQuery) {
                                     computeDisplayItems(allAssignments, currentPath, searchQuery)
@@ -201,7 +213,7 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-fun DocumentViewerScreen(path: String) {
+fun DocumentViewerScreen(path: String, isDarkTheme: Boolean) {
     val ext = path.substringAfterLast('.', "").lowercase()
     
     // 1. Correctly encode the path pieces (spaces -> %20, + -> %2B)
@@ -213,6 +225,7 @@ fun DocumentViewerScreen(path: String) {
     
     val viewerUrl = when (ext) {
         "pdf", "docx", "doc", "pptx", "ppt", "xlsx", "xls" -> "https://docs.google.com/gview?embedded=true&url=$encodedParam"
+        "md" -> "about:blank"
         else -> directFileUrl
     }
 
@@ -237,11 +250,52 @@ fun DocumentViewerScreen(path: String) {
                         )
                     }
                 }
-                loadUrl(viewerUrl)
+                // Initial load handled in update to prevent duplicating the md code
             }
         },
         update = { webView ->
-            webView.loadUrl(viewerUrl)
+            if (ext == "md") {
+                val bg = if (isDarkTheme) "#121212" else "#f5f2e9"
+                val surface = if (isDarkTheme) "#1e1e1e" else "#fdfcf9"
+                val text = if (isDarkTheme) "#e0e0e0" else "#33302a"
+                val accent = if (isDarkTheme) "#8b7d72" else "#706359"
+                
+                val html = """
+                    <!DOCTYPE html>
+                    <html>
+                    <head>
+                        <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
+                        <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+                        <style>
+                            body { font-family: sans-serif; padding: 16px; color: $text; background-color: $bg; line-height: 1.6; }
+                            img { max-width: 100%; border-radius: 8px; }
+                            pre { background: $surface; padding: 12px; overflow-x: auto; border-radius: 8px; border: 1px solid $accent; }
+                            code { font-family: monospace; background: $surface; padding: 2px 4px; border-radius: 4px; }
+                            a { color: $accent; text-decoration: none; }
+                            blockquote { border-left: 4px solid $accent; margin: 0; padding-left: 16px; color: $text; opacity: 0.8; }
+                        </style>
+                    </head>
+                    <body>
+                        <div id="content"><p>Loading markdown...</p></div>
+                        <script>
+                            fetch("$directFileUrl")
+                                .then(res => res.text())
+                                .then(text => {
+                                    document.getElementById('content').innerHTML = marked.parse(text);
+                                })
+                                .catch(err => {
+                                    document.getElementById('content').innerHTML = '<p style="color:red">Failed to load markdown.</p>';
+                                });
+                        </script>
+                    </body>
+                    </html>
+                """.trimIndent()
+                webView.loadDataWithBaseURL(null, html, "text/html", "UTF-8", null)
+            } else {
+                if (webView.url != viewerUrl) {
+                    webView.loadUrl(viewerUrl)
+                }
+            }
         },
         modifier = Modifier.fillMaxSize()
     )
