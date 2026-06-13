@@ -1,6 +1,7 @@
 package com.whit31ister.juassign
 
 import android.app.DownloadManager
+import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
 import android.net.ConnectivityManager
@@ -11,9 +12,11 @@ import android.os.Environment
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.Toast
+import java.io.File
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.compose.BackHandler
+import androidx.core.content.FileProvider
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -72,6 +75,7 @@ class MainActivity : ComponentActivity() {
                     var searchQuery by remember { mutableStateOf("") }
                     var isSearching by remember { mutableStateOf(false) }
                     var viewingFile by remember { mutableStateOf<AssignmentFile?>(null) }
+                    var viewingDownloads by remember { mutableStateOf(false) }
                     var sortOrder by remember { mutableStateOf(SortOrder.A_Z) }
                     var showSortMenu by remember { mutableStateOf(false) }
                     
@@ -104,12 +108,14 @@ class MainActivity : ComponentActivity() {
                         }
                     }
 
-                    BackHandler(enabled = viewingFile != null || currentPath.size > 1 || isSearching) {
+                    BackHandler(enabled = viewingFile != null || currentPath.size > 1 || isSearching || viewingDownloads) {
                         if (viewingFile != null) {
                             viewingFile = null
                         } else if (isSearching) {
                             isSearching = false
                             searchQuery = ""
+                        } else if (viewingDownloads) {
+                            viewingDownloads = false
                         } else if (currentPath.size > 1) {
                             currentPath = currentPath.dropLast(1)
                         }
@@ -147,26 +153,25 @@ class MainActivity : ComponentActivity() {
                             } else {
                                 TopAppBar(
                                     title = {
-                                        Text(if (currentPath.isEmpty()) "JU Assignments" else currentPath.last())
+                                        Text(if (viewingDownloads) "Downloads" else if (currentPath.isEmpty()) "JU Assignments" else currentPath.last())
                                     },
                                     navigationIcon = {
-                                        if (currentPath.size > 1) {
+                                        if (viewingDownloads) {
+                                            IconButton(onClick = { viewingDownloads = false }) {
+                                                Icon(Icons.Default.ArrowBack, contentDescription = "Back")
+                                            }
+                                        } else if (currentPath.size > 1) {
                                             IconButton(onClick = { currentPath = currentPath.dropLast(1) }) {
                                                 Icon(Icons.Default.ArrowBack, contentDescription = "Back")
                                             }
                                         }
                                     },
                                     actions = {
-                                        IconButton(onClick = { 
-                                            try {
-                                                context.startActivity(Intent(DownloadManager.ACTION_VIEW_DOWNLOADS))
-                                            } catch (e: Exception) {
-                                                Toast.makeText(context, "Downloads app not found", Toast.LENGTH_SHORT).show()
+                                        if (!viewingDownloads) {
+                                            IconButton(onClick = { viewingDownloads = true }) {
+                                                Icon(Icons.Default.Folder, contentDescription = "View Downloads")
                                             }
-                                        }) {
-                                            Icon(Icons.Default.Folder, contentDescription = "View Downloads")
-                                        }
-                                        Box {
+                                            Box {
                                             IconButton(onClick = { showSortMenu = true }) {
                                                 Icon(Icons.Default.Sort, contentDescription = "Sort")
                                             }
@@ -182,6 +187,22 @@ class MainActivity : ComponentActivity() {
                                                     text = { Text("Name (Z to A)") },
                                                     onClick = { sortOrder = SortOrder.Z_A; showSortMenu = false }
                                                 )
+                                                IconButton(onClick = { showSortMenu = true }) {
+                                                    Icon(Icons.Default.Sort, contentDescription = "Sort")
+                                                }
+                                                DropdownMenu(
+                                                    expanded = showSortMenu,
+                                                    onDismissRequest = { showSortMenu = false }
+                                                ) {
+                                                    DropdownMenuItem(
+                                                        text = { Text("Name (A to Z)") },
+                                                        onClick = { sortOrder = SortOrder.A_Z; showSortMenu = false }
+                                                    )
+                                                    DropdownMenuItem(
+                                                        text = { Text("Name (Z to A)") },
+                                                        onClick = { sortOrder = SortOrder.Z_A; showSortMenu = false }
+                                                    )
+                                                }
                                             }
                                         }
                                         IconButton(onClick = { isDarkTheme = !isDarkTheme }) {
@@ -213,6 +234,33 @@ class MainActivity : ComponentActivity() {
                                 )
                             } else if (viewingFile != null) {
                                 DocumentViewerScreen(path = viewingFile!!.path, isDarkTheme = isDarkTheme)
+                            } else if (viewingDownloads) {
+                                val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+                                val downloadedFiles = remember(allAssignments, viewingDownloads) {
+                                    allAssignments.mapNotNull { assignment ->
+                                        val file = File(downloadsDir, assignment.title)
+                                        if (file.exists()) {
+                                            DisplayItem(isFolder = false, name = file.name, description = "Downloaded File", file = AssignmentFile(file.name, file.absolutePath, "", 0))
+                                        } else null
+                                    }.distinctBy { it.name }
+                                }
+                                
+                                if (downloadedFiles.isEmpty()) {
+                                    Text("No downloaded assignments found.", modifier = Modifier.align(Alignment.Center))
+                                } else {
+                                    AssignmentList(
+                                        items = downloadedFiles,
+                                        onFolderClick = {},
+                                        onFileClick = { file ->
+                                            val localFile = File(file.path)
+                                            if (localFile.extension.lowercase() == "md") {
+                                                viewingFile = file
+                                            } else {
+                                                openFileWithIntent(context, localFile)
+                                            }
+                                        }
+                                    )
+                                }
                             } else {
                                 val displayItems = remember(allAssignments, currentPath, searchQuery, sortOrder) {
                                     computeDisplayItems(allAssignments, currentPath, searchQuery, sortOrder)
@@ -260,12 +308,11 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun DocumentViewerScreen(path: String, isDarkTheme: Boolean) {
     val ext = path.substringAfterLast('.', "").lowercase()
+    val isLocalFile = path.startsWith("/")
     
-    // 1. Correctly encode the path pieces (spaces -> %20, + -> %2B)
     val encodedPath = path.split("/").joinToString("/") { android.net.Uri.encode(it) }
     val directFileUrl = "https://whit31ister.github.io/JU_ASSIGN/$encodedPath"
     
-    // 2. Safely encode the entire URL to be passed as a query parameter
     val encodedParam = java.net.URLEncoder.encode(directFileUrl, "UTF-8")
     
     val viewerUrl = when (ext) {
@@ -306,6 +353,17 @@ fun DocumentViewerScreen(path: String, isDarkTheme: Boolean) {
                 val accent = if (isDarkTheme) "#8b7d72" else "#706359"
                 val line = if (isDarkTheme) "#333333" else "#dcd6c6"
                 
+                val markdownContent = if (isLocalFile) {
+                    try {
+                        File(path).readText()
+                            .replace("\\", "\\\\")
+                            .replace("`", "\\`")
+                            .replace("$", "\\$")
+                    } catch (e: Exception) {
+                        "Failed to read local file."
+                    }
+                } else null
+                
                 val html = """
                     <!DOCTYPE html>
                     <html>
@@ -327,14 +385,18 @@ fun DocumentViewerScreen(path: String, isDarkTheme: Boolean) {
                     <body>
                         <div id="content"><p>Loading markdown...</p></div>
                         <script>
-                            fetch("$directFileUrl")
-                                .then(res => res.text())
-                                .then(text => {
-                                    document.getElementById('content').innerHTML = marked.parse(text);
-                                })
-                                .catch(err => {
-                                    document.getElementById('content').innerHTML = '<p style="color:red">Failed to load markdown.</p>';
-                                });
+                            ${if (isLocalFile) """
+                                document.getElementById('content').innerHTML = marked.parse(`$markdownContent`);
+                            """ else """
+                                fetch("$directFileUrl")
+                                    .then(res => res.text())
+                                    .then(text => {
+                                        document.getElementById('content').innerHTML = marked.parse(text);
+                                    })
+                                    .catch(err => {
+                                        document.getElementById('content').innerHTML = '<p style="color:red">Failed to load markdown.</p>';
+                                    });
+                            """}
                         </script>
                     </body>
                     </html>
@@ -466,6 +528,30 @@ fun downloadFile(context: Context, path: String, title: String) {
     downloadManager.enqueue(request)
     
     Toast.makeText(context, "Download started...", Toast.LENGTH_SHORT).show()
+}
+
+fun openFileWithIntent(context: Context, file: File) {
+    try {
+        val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+        val intent = Intent(Intent.ACTION_VIEW).apply {
+            val extension = file.extension.lowercase()
+            val mimeType = when (extension) {
+                "pdf" -> "application/pdf"
+                "docx" -> "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                "doc" -> "application/msword"
+                "pptx" -> "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+                "xlsx" -> "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                else -> "*/*"
+            }
+            setDataAndType(uri, mimeType)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+        context.startActivity(intent)
+    } catch (e: ActivityNotFoundException) {
+        Toast.makeText(context, "No app found to open this file.", Toast.LENGTH_SHORT).show()
+    } catch (e: Exception) {
+        Toast.makeText(context, "Error opening file.", Toast.LENGTH_SHORT).show()
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
