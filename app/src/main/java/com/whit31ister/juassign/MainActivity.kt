@@ -259,6 +259,7 @@ fun DocumentViewerScreen(path: String, isDarkTheme: Boolean) {
                 val surface = if (isDarkTheme) "#1e1e1e" else "#fdfcf9"
                 val text = if (isDarkTheme) "#e0e0e0" else "#33302a"
                 val accent = if (isDarkTheme) "#8b7d72" else "#706359"
+                val line = if (isDarkTheme) "#333333" else "#dcd6c6"
                 
                 val html = """
                     <!DOCTYPE html>
@@ -269,10 +270,13 @@ fun DocumentViewerScreen(path: String, isDarkTheme: Boolean) {
                         <style>
                             body { font-family: sans-serif; padding: 16px; color: $text; background-color: $bg; line-height: 1.6; }
                             img { max-width: 100%; border-radius: 8px; }
-                            pre { background: $surface; padding: 12px; overflow-x: auto; border-radius: 8px; border: 1px solid $accent; }
+                            pre { background: $surface; padding: 12px; overflow-x: auto; border-radius: 8px; border: 1px solid $line; }
                             code { font-family: monospace; background: $surface; padding: 2px 4px; border-radius: 4px; }
                             a { color: $accent; text-decoration: none; }
                             blockquote { border-left: 4px solid $accent; margin: 0; padding-left: 16px; color: $text; opacity: 0.8; }
+                            table { border-collapse: collapse; width: 100%; margin: 16px 0; font-size: 0.9em; }
+                            th, td { border: 1px solid $line; padding: 10px 12px; text-align: left; }
+                            th { background-color: $surface; font-weight: bold; }
                         </style>
                     </head>
                     <body>
