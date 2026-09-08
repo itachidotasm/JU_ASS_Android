@@ -357,6 +357,7 @@ fun DocumentViewerScreen(path: String, isDarkTheme: Boolean) {
                     <head>
                         <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
                         <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+                        <script src="https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.min.js"></script>
                         <style>
                             body { font-family: sans-serif; padding: 16px; color: $text; background-color: $bg; line-height: 1.6; }
                             img { max-width: 100%; border-radius: 8px; }
@@ -368,17 +369,45 @@ fun DocumentViewerScreen(path: String, isDarkTheme: Boolean) {
                             th, td { border: 1px solid $line; padding: 10px 12px; text-align: left; }
                             th { background-color: $surface; font-weight: bold; }
                         </style>
+                        <script>
+                            if (window.mermaid) {
+                                mermaid.initialize({ 
+                                    startOnLoad: false, 
+                                    theme: '${if (isDarkTheme) "dark" else "default"}'
+                                });
+                            }
+                            
+                            function renderMermaid() {
+                                var mermaidCodes = document.querySelectorAll('.language-mermaid');
+                                if (mermaidCodes.length > 0) {
+                                    mermaidCodes.forEach(function(el) {
+                                        var pre = el.parentElement;
+                                        if (pre && pre.tagName.toLowerCase() === 'pre') {
+                                            var div = document.createElement('div');
+                                            div.className = 'mermaid';
+                                            div.textContent = el.textContent;
+                                            pre.parentNode.replaceChild(div, pre);
+                                        }
+                                    });
+                                    if (window.mermaid) {
+                                        mermaid.run({ nodes: document.querySelectorAll('.mermaid') }).catch(console.error);
+                                    }
+                                }
+                            }
+                        </script>
                     </head>
                     <body>
                         <div id="content"><p>Loading markdown...</p></div>
                         <script>
                             ${if (isLocalFile) """
                                 document.getElementById('content').innerHTML = marked.parse(`$markdownContent`);
+                                renderMermaid();
                             """ else """
                                 fetch("$directFileUrl")
                                     .then(res => res.text())
                                     .then(text => {
                                         document.getElementById('content').innerHTML = marked.parse(text);
+                                        renderMermaid();
                                     })
                                     .catch(err => {
                                         document.getElementById('content').innerHTML = '<p style="color:red">Failed to load markdown.</p>';
