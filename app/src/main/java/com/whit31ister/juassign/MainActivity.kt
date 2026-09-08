@@ -371,21 +371,19 @@ fun DocumentViewerScreen(path: String, isDarkTheme: Boolean) {
                         </style>
                         <script>
                             if (window.mermaid) {
-                                mermaid.initialize({ 
-                                    startOnLoad: false, 
-                                    theme: '${if (isDarkTheme) "dark" else "default"}'
-                                });
+                                mermaid.initialize({ startOnLoad: false });
                             }
                             
                             function renderMermaid() {
                                 var mermaidCodes = document.querySelectorAll('.language-mermaid');
                                 if (mermaidCodes.length > 0) {
+                                    var currentTheme = '${if (isDarkTheme) "dark" else "default"}';
                                     mermaidCodes.forEach(function(el) {
                                         var pre = el.parentElement;
                                         if (pre && pre.tagName.toLowerCase() === 'pre') {
                                             var div = document.createElement('div');
                                             div.className = 'mermaid';
-                                            div.textContent = el.textContent;
+                                            div.textContent = "%%{init: {'theme': '" + currentTheme + "'}}%%\n" + el.textContent;
                                             pre.parentNode.replaceChild(div, pre);
                                         }
                                     });
