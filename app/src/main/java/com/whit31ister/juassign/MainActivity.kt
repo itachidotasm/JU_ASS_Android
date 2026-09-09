@@ -357,6 +357,8 @@ fun DocumentViewerScreen(path: String, isDarkTheme: Boolean) {
                     <head>
                         <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0, user-scalable=yes">
                         <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+                        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.css">
+                        <script src="https://cdn.jsdelivr.net/npm/katex@0.16.8/dist/katex.min.js"></script>
                         <script src="https://cdn.jsdelivr.net/npm/mermaid@10.9.1/dist/mermaid.min.js"></script>
                         <style>
                             body { font-family: sans-serif; padding: 16px; color: $text; background-color: $bg; line-height: 1.6; }
@@ -372,6 +374,37 @@ fun DocumentViewerScreen(path: String, isDarkTheme: Boolean) {
                         <script>
                             if (window.mermaid) {
                                 mermaid.initialize({ startOnLoad: false });
+                            }
+                            
+                            function processMarkdownWithMath(text) {
+                                var mathStore = [];
+                                function storeMath(expr, displayMode) {
+                                    var id = mathStore.length;
+                                    mathStore.push({ expr: expr, displayMode: displayMode });
+                                    return '\x00MATH' + id + '\x00';
+                                }
+                                var codeStore = [];
+                                text = text.replace(/```[\s\S]*?```/g, function(match) {
+                                    var id = codeStore.length; codeStore.push(match);
+                                    return '\x00CODE' + id + '\x00';
+                                });
+                                text = text.replace(/`[^`]+`/g, function(match) {
+                                    var id = codeStore.length; codeStore.push(match);
+                                    return '\x00CODE' + id + '\x00';
+                                });
+                                text = text.replace(/\$\$([\s\S]*?)\$\$/g, function(m, p1) { return storeMath(p1.trim(), true); });
+                                text = text.replace(/\\\[([\s\S]*?)\\\]/g, function(m, p1) { return storeMath(p1.trim(), true); });
+                                text = text.replace(/\\\((.+?)\\\)/g, function(m, p1) { return storeMath(p1.trim(), false); });
+                                text = text.replace(/\$([^\$\s](?:[^\$]*?[^\$\s])?)\$/g, function(m, p1) { return storeMath(p1.trim(), false); });
+                                text = text.replace(/\x00CODE(\d+)\x00/g, function(m, id) { return codeStore[parseInt(id)]; });
+                                var html = marked.parse(text);
+                                html = html.replace(/\x00MATH(\d+)\x00/g, function(m, id) {
+                                    var item = mathStore[parseInt(id)];
+                                    try {
+                                        return katex.renderToString(item.expr, { displayMode: item.displayMode, throwOnError: false });
+                                    } catch(e) { return '<code>' + item.expr + '</code>'; }
+                                });
+                                return html;
                             }
                             
                             function renderMermaid() {
@@ -398,13 +431,14 @@ fun DocumentViewerScreen(path: String, isDarkTheme: Boolean) {
                         <div id="content"><p>Loading markdown...</p></div>
                         <script>
                             ${if (isLocalFile) """
-                                document.getElementById('content').innerHTML = marked.parse(`$markdownContent`);
+                                var text = `$markdownContent`;
+                                document.getElementById('content').innerHTML = processMarkdownWithMath(text);
                                 renderMermaid();
                             """ else """
                                 fetch("$directFileUrl")
                                     .then(res => res.text())
                                     .then(text => {
-                                        document.getElementById('content').innerHTML = marked.parse(text);
+                                        document.getElementById('content').innerHTML = processMarkdownWithMath(text);
                                         renderMermaid();
                                     })
                                     .catch(err => {
